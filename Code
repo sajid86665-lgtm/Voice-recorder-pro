@@ -1,0 +1,116 @@
+require "import"
+import "android.app.*"
+import "android.os.*"
+import "android.widget.*"
+import "android.view.*"
+import "android.media.*"
+import "java.io.*"
+
+activity.setTitle("Voice Recorder Pro")
+
+-- Variables
+local selectedBitrate = 512000 -- Default ultra high
+local fileExt = ".m4a"
+local isRecording = false
+local isPlaying = false
+local tempFile = activity.getExternalFilesDir(nil).toString().."/temp.record"
+
+-- Layout
+layout = {
+  ScrollView, {
+    LinearLayout, orientation="vertical", padding="16dp",
+    { Button, text="About", onClick=function() 
+        AlertDialog.Builder(activity).setTitle("About").setMessage("Professional Recorder by Mezab Ali.").setPositiveButton("OK", nil).show() end },
+    { Button, text="How to use", onClick=function() 
+        AlertDialog.Builder(activity).setTitle("How to Use").setMessage("1. Settings se quality aur bitrate set karein.\n2. Start par click karein.\n3. Stop karke file save karein.").setPositiveButton("Got it", nil).show() end },
+    { Button, text="⚙️ Settings", onClick=function()
+        local qItems = {"Ultra High Quality", "High Quality", "Medium Quality"}
+        local bItems = {"512kbps", "320kbps", "128kbps"}
+        local fItems = {".m4a", ".mp3", ".aac", ".wav"}
+        local sLayout = { LinearLayout, orientation="vertical", padding="16dp",
+          {TextView, text="Quality Preset:"}, {Spinner, id="qSpin", items=qItems},
+          {TextView, text="Max Bitrate:"}, {Spinner, id="bSpin", items=bItems},
+          {TextView, text="Format:"}, {Spinner, id="fSpin", items=fItems}
+        }
+        AlertDialog.Builder(activity).setTitle("Settings").setView(loadlayout(sLayout))
+        .setPositiveButton("Apply", function()
+          fileExt = fItems[fSpin.getSelectedItemPosition()+1]
+          local b = bItems[bSpin.getSelectedItemPosition()+1]
+          if b=="512kbps" then selectedBitrate=512000 elseif b=="320kbps" then selectedBitrate=320000 else selectedBitrate=128000 end
+          Toast.makeText(activity, "Ultra Settings Applied!", Toast.LENGTH_SHORT).show()
+        end).show()
+      end 
+    },
+    { Button, id="recordBtn", text="Start Recording", layout_marginTop="10dp" },
+    { Button, id="playBtn", text="Play Recording", enabled=false },
+    { EditText, id="fileName", hint="Enter file name (without extension)" },
+    { Button, id="saveBtn", text="Save Recording", enabled=false },
+    { TextView, id="status", text="Status: Ready", textSize="16sp", layout_marginTop="20dp" }
+  }
+}
+activity.setContentView(layout)
+
+-- Recording Logic
+function startRecording()
+  mediaRecorder = MediaRecorder()
+  mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+  mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+  mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+  mediaRecorder.setAudioEncodingBitRate(selectedBitrate) -- Yeh ab 512kbps tak ja sakta hai
+  mediaRecorder.setAudioSamplingRate(48000) -- High quality sampling
+  mediaRecorder.setOutputFile(tempFile)
+  mediaRecorder.prepare()
+  mediaRecorder.start()
+  isRecording = true
+  recordBtn.setText("Stop Recording")
+  status.setText("Status: Recording @ " .. (selectedBitrate/1000) .. "kbps")
+end
+
+function stopRecording()
+  mediaRecorder.stop()
+  mediaRecorder.release()
+  mediaRecorder = nil
+  isRecording = false
+  recordBtn.setText("Start Recording")
+  playBtn.setEnabled(true)
+  saveBtn.setEnabled(true)
+  status.setText("Status: Recording Finished")
+end
+
+-- Playback Logic
+playBtn.onClick = function()
+  if isPlaying then
+    mediaPlayer.stop()
+    mediaPlayer.release()
+    mediaPlayer = nil
+    isPlaying = false
+    playBtn.setText("Play Recording")
+  else
+    mediaPlayer = MediaPlayer()
+    mediaPlayer.setDataSource(tempFile)
+    mediaPlayer.prepare()
+    mediaPlayer.start()
+    isPlaying = true
+    playBtn.setText("Stop Playback")
+    mediaPlayer.setOnCompletionListener({onCompletion=function(mp)
+      isPlaying=false
+      playBtn.setText("Play Recording")
+      mp.release()
+    end})
+  end
+end
+
+recordBtn.onClick = function() if isRecording then stopRecording() else startRecording() end end
+
+saveBtn.onClick = function()
+  local name = fileName.getText().toString()
+  if name == "" then name = "recording" end
+  local dest = File("/storage/emulated/0/Download/" .. name .. fileExt)
+  local fis = FileInputStream(tempFile)
+  local fos = FileOutputStream(dest)
+  local buffer = byte[4096]
+  local len = fis.read(buffer)
+  while len > 0 do fos.write(buffer, 0, len) len = fis.read(buffer) end
+  fis.close() fos.close()
+  status.setText("Saved in Downloads: " .. name .. fileExt)
+end
